@@ -1,17 +1,20 @@
 import telebot
 import random
-import time
 import json
 import os
 from datetime import datetime, timedelta
 
-TOKEN = "8254564948:AAE3Amva6Gw6GCRbVUBu4L0F6X60K6ZR7Wo"
-ADMIN_ID = 6938192333  # Ganti kalau perlu
+# ================= CONFIG =================
+TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_ID = 6938192333  # ganti kalau perlu
+
+if not TOKEN:
+    print("❌ BOT_TOKEN belum diset!")
+    exit()
 
 bot = telebot.TeleBot(TOKEN)
 
 # ================= DATABASE =================
-
 DATA_FILE = "users.json"
 
 if not os.path.exists(DATA_FILE):
@@ -19,8 +22,11 @@ if not os.path.exists(DATA_FILE):
         json.dump({"approved": []}, f)
 
 def load_users():
-    with open(DATA_FILE, "r") as f:
-        return json.load(f)
+    try:
+        with open(DATA_FILE, "r") as f:
+            return json.load(f)
+    except:
+        return {"approved": []}
 
 def save_users(data):
     with open(DATA_FILE, "w") as f:
@@ -29,7 +35,6 @@ def save_users(data):
 users = load_users()
 
 # ================= MARKETS =================
-
 markets = {
     "crypto": "🪙 Crypto IDX",
     "eurusd": "🇪🇺🇺🇸 EUR/USD",
@@ -42,7 +47,6 @@ markets = {
 active_signals = {}
 
 # ================= SIGNAL =================
-
 def generate_signal():
     return random.choice(["BUY 🟢", "SELL 🔴"])
 
@@ -65,7 +69,6 @@ def get_signal(market_key):
     return new_signal
 
 # ================= START =================
-
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
@@ -88,7 +91,6 @@ def start(message):
     show_markets(message.chat.id)
 
 # ================= SHOW MARKETS =================
-
 def show_markets(chat_id):
     markup = telebot.types.InlineKeyboardMarkup(row_width=2)
 
@@ -100,16 +102,20 @@ def show_markets(chat_id):
 
     markup.add(*buttons)
 
-    bot.send_message(chat_id, "🔥 YOYO SIGNAL BOT 🔥\n\nPilih Market:", reply_markup=markup)
+    bot.send_message(
+        chat_id,
+        "🔥 YOYO SIGNAL BOT 🔥\n\nPilih Market:",
+        reply_markup=markup
+    )
 
 # ================= CALLBACK =================
-
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
     user_id = call.from_user.id
 
     # ===== REQUEST ACCESS =====
     if call.data == "request_access":
+        username = call.from_user.username or "NoUsername"
 
         markup = telebot.types.InlineKeyboardMarkup()
         acc = telebot.types.InlineKeyboardButton("✅ ACC", callback_data=f"acc_{user_id}")
@@ -118,7 +124,7 @@ def callback(call):
 
         bot.send_message(
             ADMIN_ID,
-            f"📢 REQUEST AKSES\n\nID: {user_id}\nUsername: @{call.from_user.username}",
+            f"📢 REQUEST AKSES\n\nID: {user_id}\nUsername: @{username}",
             reply_markup=markup
         )
 
@@ -126,7 +132,7 @@ def callback(call):
         return
 
     # ===== ADMIN ACC =====
-    if call.data.startswith("acc_") and call.from_user.id == ADMIN_ID:
+    if call.data.startswith("acc_") and user_id == ADMIN_ID:
         target_id = int(call.data.split("_")[1])
 
         if target_id not in users["approved"]:
@@ -138,7 +144,7 @@ def callback(call):
         return
 
     # ===== ADMIN REJECT =====
-    if call.data.startswith("reject_") and call.from_user.id == ADMIN_ID:
+    if call.data.startswith("reject_") and user_id == ADMIN_ID:
         target_id = int(call.data.split("_")[1])
 
         bot.send_message(target_id, "❌ AKSES ANDA DITOLAK")
@@ -152,11 +158,9 @@ def callback(call):
 
     try:
         bot.answer_callback_query(call.id, "⏳ Generating signal...")
-        time.sleep(2)
 
         signal = get_signal(call.data)
         market_name = markets.get(call.data, "Unknown Market")
-
         entry_str = signal["entry_time"].strftime("%H:%M")
 
         text = (
@@ -180,5 +184,6 @@ def callback(call):
     except Exception as e:
         print("ERROR:", e)
 
-print("Bot running...")
-bot.infinity_polling()
+# ================= RUN =================
+print("🤖 Bot running...")
+bot.infinity_polling(skip_pending=True)
